@@ -1,0 +1,21 @@
+.user {
+  margin: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.image {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.caption {
+  /* */
+}
+
+.subcaption {
+  display: block;
+  color: darkgray;
+}
