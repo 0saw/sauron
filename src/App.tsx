@@ -1,145 +1,89 @@
 import styles from './App.module.css';
-import { ChangeEvent, FormEvent, useCallback, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback } from 'react';
+import { useAppDispatch, useAppSelector } from './store/hooks';
+import {
+  fetchRandomReviewer,
+  fetchRepoContributors,
+  fetchRepos,
+  setIsVisible,
+  setRepo,
+  setStopList,
+  setUser,
+} from './store/reviewer';
 import { Select } from './components/Select';
-import { useRequest } from './hooks/useRequest';
-import { fetchRepoContributors, fetchRepos, fetchUser } from './api';
-import { User } from './api/types';
 import { Reviewer } from './components/Reviewer';
-import { useLocalStorage } from './hooks/useLocalStorage';
 
-const useUser = () => {
-  const [ user, setUser ] = useLocalStorage('user', '');
+export const App = () => {
+  const dispatch = useAppDispatch();
 
-  const {
-    run,
-    clear,
-    data: reposFromResponse,
-  } = useRequest(fetchRepos, {
-    manual: user === '',
-    params: [ user ]
-  });
+  const [
+    isVisible,
 
-  const repos = useMemo(() => {
-    if (!Array.isArray(reposFromResponse) || reposFromResponse.length === 0) {
-      return [];
-    }
-
-    return [
-      {
-        text: 'Выберите репозиторий из списка',
-        value: '',
-        disabled: true,
-      },
-
-      ...reposFromResponse.map((repo) => ({
-        text: repo.full_name,
-        value: repo.full_name,
-      })),
-    ];
-  }, [ reposFromResponse ]);
-
-  const handleUserChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const value = e.currentTarget.value;
-
-    setUser(e.currentTarget.value);
-
-    if (!value) {
-      clear()
-    } else {
-      run(value);
-    }
-  }, [ setUser, clear, run ]);
-
-  return {
     user,
-    handleUserChange,
-    hasRepos: Array.isArray(reposFromResponse) && reposFromResponse.length > 0,
+    repo,
+    stopList,
+
+    hasRepos,
     repos,
-  };
-};
 
-const useRepo = () => {
-  const [ repo, setRepo ] = useLocalStorage('repo', '');
-  const [ ownerBit, repoBit ] = repo.split('/');
+    hasContributors,
+    contributors,
 
-  const {
-    run,
-    clear,
-    data: contributorsFromResponse,
-  } = useRequest(fetchRepoContributors, {
-    manual: typeof repoBit === 'undefined',
-    params: [ ownerBit, repoBit ],
-  });
+    reviewer,
+  ] = useAppSelector((state) => [
+    state.reviewer.isVisible,
 
-  const contributors = useMemo(() => {
-    if (!Array.isArray(contributorsFromResponse) || contributorsFromResponse.length === 0) {
-      return [];
-    }
+    state.reviewer.user,
+    state.reviewer.repo,
+    state.reviewer.stopList,
 
-    return [
+    state.reviewer.repos.length > 0,
+    [
+      {
+        text: 'Выберите репозиторий',
+        value: '',
+      },
+      ...state.reviewer.repos,
+    ],
+
+    state.reviewer.contributors.length > 0,
+    [
       {
         text: '',
         value: '',
       },
+      ...state.reviewer.contributors,
+    ],
 
-      ...contributorsFromResponse.map((contributor) => ({
-        text: contributor.login,
-        value: contributor.login,
-      })),
-    ];
-  }, [ contributorsFromResponse ]);
+    state.reviewer.reviewer,
+  ]);
 
-  const handleRepoChange = useCallback((e: ChangeEvent<HTMLInputElement & HTMLSelectElement>) => {
-    setRepo(e.target.value);
-
-    const [ ownerBit, repoBit ] = e.target.value.split('/');
-
-    if (!repoBit) {
-      clear();
-    } else {
-      run(ownerBit, repoBit);
-    }
-  }, [ setRepo, run, clear ]);
-
-  return {
-    repo,
-    handleRepoChange,
-    hasContributors: Array.isArray(contributorsFromResponse) && contributorsFromResponse.length > 0,
-    contributors,
-  };
-};
-
-export const App = () => {
-  const [ isVisible, setIsVisible ] = useLocalStorage('isVisible', true);
-  const [ reviewer, setReviewer ] = useState<User | null>(null);
-
-  const { user, handleUserChange, hasRepos, repos } = useUser();
-  const { repo, handleRepoChange, hasContributors, contributors } = useRepo();
-  const [ stopList, setStopList ] = useLocalStorage<string[]>('stopList', []);
-
-  const handleSubmit = useCallback(async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = useCallback((e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    dispatch(fetchRandomReviewer())
+  }, [ dispatch ]);
 
-    const reviewerLogin = contributors
-      .filter((contributor) => contributor.value && !stopList.includes(contributor.value))
-      .sort(() => Math.random() < 0.5 ? -1 : 1)[0]?.value
+  const handleUserChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+    dispatch(setUser(e.currentTarget.value));
+    dispatch(fetchRepos(e.currentTarget.value));
+  }, [ dispatch ]);
 
-    if (!reviewerLogin) {
+  const handleRepoChange = useCallback((e: ChangeEvent<HTMLSelectElement & HTMLInputElement>) => {
+    dispatch(setRepo(e.currentTarget.value));
+
+    const [ ownerBit, reviewerBit ] = e.currentTarget.value.split('/', 2);
+    if (!reviewerBit) {
       return;
     }
 
-    try {
-      setReviewer(await fetchUser(reviewerLogin));
-    } catch {
-      alert('Could not fetch user');
-    }
-  }, [ contributors, stopList ]);
+    dispatch(fetchRepoContributors([ ownerBit, reviewerBit ]));
+  }, [ dispatch ]);
 
   const handleStopListChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
-    setStopList(
+    dispatch(setStopList(
       [ ...e.currentTarget.selectedOptions ].map((option) => option.value),
-    );
-  }, [ setStopList ]);
+    ));
+  }, [ dispatch ]);
 
   return (
     <>
@@ -149,7 +93,7 @@ export const App = () => {
       >
         <details
           open={isVisible}
-          onToggle={(e) => setIsVisible(e.currentTarget.open)}
+          onToggle={(e) => dispatch(setIsVisible(e.currentTarget.open))}
         >
           <summary>
             Настройки
